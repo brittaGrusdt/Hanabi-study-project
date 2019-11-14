@@ -1,4 +1,5 @@
 Blogposts for starters
+---------------------------------------------------------------------------------------------------------------------
 
 https://medium.com/@jonathan_hui/rl-introduction-to-deep-reinforcement-learning-35c25e04c199
 http://karpathy.github.io/2016/05/31/rl/
@@ -6,4 +7,12 @@ http://karpathy.github.io/2016/05/31/rl/
 The first one contains much more information, the second one is nicely written and gives a clear connection between 
 supervised learning and reinforcement learning.
 
+
+Blogposts for implementation
+---------------------------------------------------------------------------------------------------------------------
+
+https://medium.com/emergent-future/simple-reinforcement-learning-with-tensorflow-part-0-q-learning-with-tables-and-neural-networks-d195264329d0
+https://adventuresinmachinelearning.com/reinforcement-learning-tensorflow/
+
+The second one is about one example and very short, the first one is an entire post series with 8 posts and different topics. 
 
