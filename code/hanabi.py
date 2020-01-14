@@ -153,10 +153,10 @@ def potentially_discardable(possible, board):
     return False
 
 # ADD: add keep possibliity
-def potentially_keep(possible, trash):
+def potentially_keep(possible,trash):
     for (mycolor,myrank) in possible:
         if board[mycolor][1] < myrank:  # the card is still useful
-            for (trashedcolor,trashedrank) in trash:  #  I might keep the card if it has been already trashed
+            for (trashedcolor,trashedrank) in trash:  # keep the card if it has been already trashed
                 if (mycolor,myrank) == (trashedcolor,trashedrank):
                     return True
     return False
@@ -618,7 +618,6 @@ def whattodo(knowledge, pointed, board, trash):
 def pretend(action, knowledge, intentions, hand, board):
     '''
     predict the action other player given my action and how good it is
-    TODO: Didn't got it completely
     :param action: tuple, (type,value)
     :param knowledge: nested list, knowledge of [1-nr] player
     :param intentions: list, my inferred intention for all players
@@ -782,7 +781,7 @@ class IntentionalPlayer(Player):
         if discards and hints < 8 and not result:  # discard if no card is playable and hint token is needed
             # TODO: do not set a hard boundary hints<8, but reason about actions from next player and evaluate the
             # importance of hint token for the next turn
-            result =  Action(DISCARD, cnr=random.choice(discards))  # discard randomly from useless cards (discards)
+            result = Action(DISCARD, cnr=random.choice(discards))  # discard randomly from useless cards (discards)
 ####################################
 
 ##### CalculateGoals: what should other players do ? #####
@@ -805,8 +804,6 @@ class IntentionalPlayer(Player):
                             intentions[j] = DISCARD
                     if rank < 5 and (color,rank) not in othercards:  # you should never discard 5
                         discardables.append((i,j))  # if the card is not in the pile, it might be discarded
-                        # TODO: for 1 you can discard even if the card is already discarded, but it probably
-                        # doesn't make a big difference
                         if not intentions[j]:
                             intentions[j] = CANDISCARD  # no intention is interpreted as keep
 
@@ -910,10 +907,9 @@ class SelfIntentionalPlayer(Player):
         self.explanation = []
         self.explanation.append(["Your Hand:"] + map(f, hands[1-nr]))
 
-        ##### New part: do what the other player wants me to do #####
+        ##### New part: do what the other player (human) wants me to do #####
         action = []  # list of all feasible actions
-        othercards = trash + played  # cards
-        print('othercards: ', othercards)
+        othercards = trash + played  # ADD: needed for KEEP, list of tuples
         if self.gothint:  # if I am given a hint about my hands
             (act,plr) = self.gothint
             if act.type == HINT_COLOR:
@@ -922,28 +918,31 @@ class SelfIntentionalPlayer(Player):
                         whattodo(card,
                                  sum(card[act.col]) > 0,  # if there is a possibility that I have a card of hinted color
                                  board,
-                                 trash))  # ADD: trash parameter, TODO: same for number hint
+                                 trash))  # ADD: trash parameter
             elif act.type == HINT_NUMBER:
                 for card in knowledge[nr]:
                     cnt = 0
                     for c in ALL_COLORS:
                         cnt += card[c][act.num-1]
-                    action.append(whattodo(card, cnt > 0, board))
+                    action.append(whattodo(card, cnt > 0, board, trash))  # ADD: trash param
 
-        if action:  #  infer intention of other players
+        # if I can potentially do something with my card
+        if action:
             self.explanation.append(["What you want me to do"] + map(format_intention, action))
             for i,a in enumerate(action):
-                if a == PLAY and (not result or result.type == DISCARD):
+                if a == PLAY and (not result or result.type == DISCARD):  # playing is preferred over discarding
                     result = Action(PLAY, cnr=i)
-                elif a == DISCARD and not result:
+                elif a == DISCARD and not result:  # rather discard the first card
                     result = Action(DISCARD, cnr=i)
+                # elif a == KEEP and not result:
+                #     # TODO: make a list of cards that cannot be discarded and add this one
         ##################################
 
 
         ##### infer my hands #####
         self.gothint = None
         for card in knowledge[nr]:
-            possible.append(get_possible(card))
+            possible.append(get_possible(card)) # all possibilities of my hands
         ##################################
 
         ##### decide to play or discard (which have priority over giving hints) #####
@@ -978,6 +977,8 @@ class SelfIntentionalPlayer(Player):
                         discardables.append((i,j))
                         if not intentions[j]:
                             intentions[j] = CANDISCARD
+                    # else: keep
+                    # TODO: they should be able to keep the card
         
         self.explanation.append(["Intentions"] + map(format_intention, intentions))
         ################
@@ -1013,7 +1014,8 @@ class SelfIntentionalPlayer(Player):
         ##### for explanation  #####
         self.explanation.append(["My Knowledge"] + map(format_knowledge, knowledge[nr]))
         possible = [ Action(DISCARD, cnr=i) for i in xrange(handsize) ]
-        
+
+        # compute expected loss of discarding a card
         scores = map(lambda p: pretend_discard(p, knowledge[nr], board, trash), possible)
         def format_term((col,rank,n,prob,val)):
             return COLORNAMES[col] + " " + str(rank) + " (%.2f%%): %.2f"%(prob*100, val)
