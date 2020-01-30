@@ -11,9 +11,10 @@ RED = 4
 ALL_COLORS = [GREEN, YELLOW, WHITE, BLUE, RED]
 COLORNAMES = ["green", "yellow", "white", "blue", "red"]
 
-COUNTS = [3,2,2,2,1]
+COUNTS = [3,2,2,2,1]  # num. of cards of each rank
 
 # semi-intelligently format cards in any format
+# For printing, not important for game dynamics
 def f(something):
     if type(something) == list:
         return map(f, something)
@@ -39,7 +40,7 @@ def make_deck():
     
 def initial_knowledge():
     '''
-    initial C.K. is just COUNTS of all ranks
+    initial common knowledge is just counts of all ranks (3,2,2,2,1)
     :return: list, knowledge
     '''
     knowledge = []
@@ -80,6 +81,7 @@ def iscard((c,n)):
             
     return knowledge
     
+# different actions are codified with numbers
 HINT_COLOR = 0
 HINT_NUMBER = 1
 PLAY = 2
@@ -90,8 +92,8 @@ class Action(object):
         self.type = type
         self.pnr = pnr  # player number
         self.col = col  # color
-        self.num = num  # rank
-        self.cnr = cnr  # card number
+        self.num = num  # rank, 0-based
+        self.cnr = cnr  # card number, 0-based
     def __str__(self):
         if self.type == HINT_COLOR:
             return "hints " + str(self.pnr) + " about all their " + COLORNAMES[self.col] + " cards"
@@ -123,52 +125,61 @@ def get_possible(knowledge):
     '''
     result = []
     for col in ALL_COLORS:
-        for rank, count in enumerate(knowledge[col]):  # for each [col][rank] combi.
+        for rank, count in enumerate(knowledge[col]):  # for each [col][rank] combination
             if count > 0:  # if there are still cards left
                 result.append((col,rank+1))
     return result
-    
+
+# return True if the card is surely playable
 def playable(possible, board):
     for (col,nr) in possible:
         if board[col][1] + 1 != nr:
             return False
     return True
-    
+
+# return True if the card might be playable
 def potentially_playable(possible, board):
     for (col,nr) in possible:
         if board[col][1] + 1 == nr:
             return True
     return False
-    
+
+# return True if the card is surely discardable
 def discardable(possible, board):
     for (col,nr) in possible:
         if board[col][1] < nr:
             return False
     return True
     
+# return True if the card might be discardable
 def potentially_discardable(possible, board):
     for (col,nr) in possible:
         if board[col][1] >= nr:
             return True
     return False
 
-# ADD: reason about possiblity of keeping a card
-def potentially_keep(possible, board, trash):
-    for (color,rank) in possible:
-        if board[color][1] < rank:  # the card is still useful
-            for (trashedcolor,trashedrank) in trash:  # keep the card if it has been already trashed
-                if (color,rank) == (trashedcolor,trashedrank):
-                    print('match!:', color, rank)
-                    return True
-    return False
+# # ADD: reason about possiblity of keeping a card
+# # this is not needed anymore
+# def potentially_keep(possible, board, trash):
+#     for (color,rank) in possible:
+#         if board[color][1] < rank:  # the card is still useful
+#             for (trashedcolor,trashedrank) in trash:  # keep the card if it has been already trashed
+#                 if (color,rank) == (trashedcolor,trashedrank):
+#                     print('match!:', color, rank)
+#                     return True
+#     return False
 
+# update the knowledge structure of all agents
 def update_knowledge(knowledge, used):
     result = copy.deepcopy(knowledge)
     for r in result:
         for (c,nr) in used:
             r[c][nr-1] = max(r[c][nr-1] - used[c,nr], 0)
     return result
-        
+
+############# AGENTS ############################
+##############################################
+
 class InnerStatePlayer(Player):
     def __init__(self, name, pnr):
         self.name = name
@@ -354,8 +365,6 @@ def generate_hands_simple(knowledge, used={}):
                     yield [(col,i+1)] + other
 
 
-
-                    
 a = 1   
 
 class SelfRecognitionPlayer(Player):
@@ -602,25 +611,26 @@ def format_intention(i):
         return "Can Discard"
     return "Keep"
     
+# This is not needed anymore because I explicitly implemented this
+# The idea is to reason whattodo given a hint
 def whattodo(knowledge, pointed, board):
+# @pointed: whether my card is postively identified and there is a possibility of my card being that
+# e.g.) given a hint about all cards that are red, whether my second card can be red
     possible = get_possible(knowledge)
     play = potentially_playable(possible, board)
     discard = potentially_discardable(possible, board)
-    # keep = potentially_keep(possible, trash)
-    
+
     if play and pointed:  # if I can play the card and I possibly have that card
         return PLAY
     if discard and pointed:
         return DISCARD
-    # if keep and pointed:
-    #     return KEEP
     return None
 
 def pretend(action, knowledge, intentions, hand, board):
     '''
-    predict the action other player given my action and how good it is
+    predict the action of the other player given my action and how good it is
     :param action: tuple, (type,value)
-    :param knowledge: nested list, knowledge of [1-nr] player
+    :param knowledge: nested list, knowledge of [1-nr] player (so the other player)
     :param intentions: list, my inferred intention for all players
     :param hand: list, hand of 1-nr-th player
     :param board: top cards
@@ -628,11 +638,11 @@ def pretend(action, knowledge, intentions, hand, board):
     '''
 
     (type,value) = action  # type; color or rank, value; the actual value (e.g. red ...)
-    positive = []  #
-    haspositive = False
+    positive = []
+    haspositive = False  # True if some card is positively identified (e.g.told that it is red) by the hint
     change = False
-    if type == HINT_COLOR:  # hint about color
-        newknowledge = []  # M'_B
+    if type == HINT_COLOR:
+        newknowledge = []  # M'_B in paper
         for i,(col,num) in enumerate(hand):  # color and rank of each i-th card
             positive.append(value==col)  # which cards are actually red?
             newknowledge.append(hint_color(knowledge[i], value, value == col))
@@ -640,7 +650,7 @@ def pretend(action, knowledge, intentions, hand, board):
                 haspositive = True
                 if newknowledge[-1] != knowledge[i]:
                     change = True
-    else:
+    else:  # rank hint, analog
         newknowledge = []
         for i,(col,num) in enumerate(hand):
             positive.append(value==num)
@@ -659,7 +669,7 @@ def pretend(action, knowledge, intentions, hand, board):
     pos = False
     for i,c,k,p in zip(intentions, hand, newknowledge, positive):
         
-        action = whattodo(k, p, board)
+        action = whattodo(k, p, board)  # assume that the co-player will follow my logic to choose her action!
         
         if action == PLAY and i != PLAY:
             #print "would cause them to play", f(c)
@@ -687,7 +697,10 @@ def pretend(action, knowledge, intentions, hand, board):
     return True,score, predictions
     
 HINT_VALUE = 0.5
-    
+
+
+# It tries to compute the expected loss of discarding each card
+# This will be not necessary anymore, I propose to simply discard the oldest card
 def pretend_discard(act, knowledge, board, trash):
     which = copy.deepcopy(knowledge[act.cnr])
     for (col,num) in trash:
@@ -721,6 +734,7 @@ def pretend_discard(act, knowledge, board, trash):
                     terms.append((col,rank,cnt,prob,-value))
     return (act, expected, terms)
 
+# for pretty printing
 def format_knowledge(k):
     result = ""
     for col in ALL_COLORS:
@@ -729,7 +743,7 @@ def format_knowledge(k):
                 result += COLORNAMES[col] + " " + str(i+1) + ": " + str(cnt) + "\n"
     return result
 
-
+# this is the dumb version
 class IntentionalPlayer(Player):
     '''
     Every class have three methods, init, get_action and inform
@@ -888,8 +902,8 @@ class IntentionalPlayer(Player):
             self.played = game.played[:]
 
 
-
-
+###### !!!!!!!!! THIS IS THE SHIT !!!!!!!!! #
+#########################
 class SelfIntentionalPlayer(Player):
     def __init__(self, name, pnr):
         self.name = name
@@ -904,44 +918,58 @@ class SelfIntentionalPlayer(Player):
 
 
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints):
-        handsize = len(knowledge[0])
-        possible = []
-        result = None
-        self.explanation = []
+
+        '''
+        :param nr: int, nr-th player
+        :param hands: list of list, hands[nr]
+        :param knowledge: nested list, knowledge[nr][i-th card][Color][rank] contains probability
+        :param trash: list, discarded cards
+        :param played: list, all cards played successfully
+        :param board: list, convenience param showing top cards of played
+        :param valid_actions: list, all possible actions, no hints action given no hint tokens
+        :param hints: int, number of hint tokens left
+        :return: tuple, result(of class Action) and score (int)
+        '''
+
+        ##### reason about possible hands of yours, return possible #####
+        handsize = len(knowledge[0])  # all player have same handsize so just take the handsize of first player
+        possible = []  # list of list of tuples, possible[card][possibilities] = (color,rank)
+        result = None  # What will I do? PLAY, DISCARD, HINT...
+        self.explanation = []  # Text to be shown in UI
         self.explanation.append(["Your Hand:"] + map(f, hands[1-nr]))
 
-        ##### New part: do what the other player (human) wants me to do #####
-        action = None  # ADD: just keep one possible action and not a list
+        ##### (1) do what the other player (human) wants me to do #####
+        action = None  # ADD: just keep one possible action and not a list of whole possible actions
         card_index = None
         if self.gothint:  # if I am given a hint about my hands
             (act,plr) = self.gothint
             if act.type == HINT_COLOR:
                 for ci, card in enumerate(knowledge[nr]):
-                    # e.g.) I am given a hint about red cards, and my ci-th card is possibly red
                     pointed = sum(card[act.col]) > 0  # positively identified
+                    # e.g.) I am given a hint about red cards, and my ci-th card is possibly red
                     possible_hint = get_possible(card)
                     play = playable(possible_hint, board)  # ADD: should play the surely playable card if possible
-                    mayplay = potentially_playable(possible_hint, board)
-                    discard = discardable(possible_hint, board)  # ADD: mostly hint about discarding is not given
+                    # mayplay = potentially_playable(possible_hint, board)
+                    discard = discardable(possible_hint, board)  # ADD: and only surely discardable
                     if play and pointed:
-                        action = PLAY  # the last surely playable card should be played
+                        action = PLAY  # the last (the most new card) surely playable card should be played
                         card_index = ci
-        #             elif mayplay and pointed and action != PLAY:
-        #                 action = PLAY  # keep action if it's play for sure
-        #                 card_index = ci
+                    # elif mayplay and pointed and action != PLAY:
+                    #     action = PLAY  # keep action if it's play for sure
+                    #     card_index = ci
                     elif discard and pointed and action != PLAY:
                         action = DISCARD
                         card_index = ci
-            elif act.type == HINT_NUMBER:
+            elif act.type == HINT_NUMBER:  # analog to color hint
                 for ci, card in enumerate(knowledge[nr]):
                     cnt = 0
                     for c in ALL_COLORS:
                         cnt += card[c][act.num-1]
                     pointed = cnt > 0
                     possible_hint = get_possible(card)
-                    play = playable(possible_hint, board)  # ADD: should play the surely playable card if possible
-                    mayplay = potentially_playable(possible_hint, board)
-                    discard = discardable(possible_hint, board)  # ADD: mostly hint about discarding is not given
+                    play = playable(possible_hint, board)
+                    # mayplay = potentially_playable(possible_hint, board)
+                    discard = discardable(possible_hint, board)
                     if play and pointed:
                         action = PLAY  # the last surely playable card should be played
                         card_index = ci
@@ -952,13 +980,24 @@ class SelfIntentionalPlayer(Player):
                         action = DISCARD
                         card_index = ci
 
-        if action is None:
-            print('KEEP activated')
-            if act.type == HINT_COLOR:
-                for ci, card in enumerate(knowledge[nr]):
-                    if sum(card[act.col]) > 0:
-                        self.keeplist.add(ci)
-        #
+            # when the hint doesn't lead to any surely possible actions
+            if action is None:
+                print('KEEP function activated')
+                if act.type == HINT_COLOR:
+                    for ci, card in enumerate(knowledge[nr]):
+                        pointed = sum(card[act.col]) > 0
+                        if pointed:
+                            self.keeplist.add(ci)
+                elif act.type == HINT_NUMBER:
+                    for ci,card in enumerate(knowledge[nr]):
+                        cnt = 0
+                        for c in ALL_COLORS:
+                            cnt += card[c][act.num - 1]
+                        pointed = cnt > 0
+                        if pointed:
+                            self.keeplist.add(ci)
+        #  this is now deprecated. The idea was to keep the card only if
+        #  there is exactly one card of that specific type left
         #     # ADD: KEEP if no hints about play or discard is given
         #     # if (len(set(action)) == 1) and (action[0] is None):
         #     if action is None:
@@ -993,7 +1032,7 @@ class SelfIntentionalPlayer(Player):
         #                             else:
         #                                 print(ci+1, COLORNAMES[col], rank+1, card[col][rank])
 
-        # ADD: aux function to help with shifting if a card is played, discarded ...
+        # ADD: aux function to help with shifting keeplist if a card is played, discarded ...
         def shift_index(acted_index):
             new_list = copy.deepcopy(self.keeplist)
             for cnr in self.keeplist:
@@ -1006,6 +1045,8 @@ class SelfIntentionalPlayer(Player):
         # if I can potentially do something with my card
         if action:
             result = Action(action, cnr=card_index)
+
+            # this is now deprecated, when I have a list of actions
             # self.explanation.append(["What you want me to do"] + map(format_intention, action))
             # for i,a in enumerate(action):
             #     if a == PLAY and (not result or result.type == DISCARD):  # playing is preferred over discarding
@@ -1025,9 +1066,9 @@ class SelfIntentionalPlayer(Player):
             possible.append(get_possible(card)) # all possibilities of my hands
         ##################################
 
-        ##### decide to play or discard (which have priority over giving hints) #####
-        discards = []
-        for i,card in enumerate(possible):
+        ##### 2), 3) decide to play or discard (which have priority over giving hints) #####
+        discards = []  # list of all useless cards
+        for i,card in enumerate(possible):  # for each card in hands
             if playable(card, board) and not result:  # if playable, play
                 print('i-th card is surely playable: ', i)
                 result = Action(PLAY, cnr=i)
@@ -1036,51 +1077,51 @@ class SelfIntentionalPlayer(Player):
             if discardable(card, board):  # if discardable, discard
                 discards.append(i)
 
-        if discards and hints < 8 and not result:
+        if discards and hints < 8 and not result:  # discard if no card is playable and hint token is not max
             ci = random.choice(discards)
             result = Action(DISCARD, cnr=ci)
             shift_index(ci)
             print('shift keeplist after discard: ', self.keeplist)
         ########################
 
-        ##### giving hints, compute intentions #####
-        playables = []
+        ##### 4) CalculateGoals: what should other players do ? #####
+        playables = []  # playables = [(0,2)] 2th card of 0th player can be played
         useless = []
         discardables = []
         othercards = trash + board
         intentions = [None for i in xrange(handsize)]
-        for i,h in enumerate(hands):
-            if i != nr:
-                for j,(col,n) in enumerate(h):
-                    if board[col][1] + 1 == n:
-                        playables.append((i,j))
-                        intentions[j] = PLAY
-                    if board[col][1] >= n:
-                        useless.append((i,j))
+        for i,h in enumerate(hands):  # hand of i-th player
+            if i != nr:  # no need to infer intention of my own (I just know it)
+                for j, (color, rank) in enumerate(h):  # j-th card of i-th players hand
+                    if board[color][1] + 1 == rank:  # if rank of the card is exactly one more than board, it's playable
+                        playables.append((i, j))  # j-th card of i-th player can be played
+                        intentions[j] = PLAY  # Then I expect j-th player will try to play that card
+                    if board[color][1] >= rank:  # rank of the card is leq than already played card,
+                        useless.append((i, j))  # so it can be safely discard
                         if not intentions[j]:
                             intentions[j] = DISCARD
-                    if n < 5 and (col,n) not in othercards:
-                        discardables.append((i,j))
+                    if rank < 5 and (color, rank) not in othercards:  # you should never discard 5
+                        discardables.append((i, j))  # if the card is not in the pile, it might be discarded
                         if not intentions[j]:
-                            intentions[j] = CANDISCARD
-                    # TODO: human player should be able to keep the card
-        
+                            intentions[j] = CANDISCARD  # no intention is interpreted as keep
+
         self.explanation.append(["Intentions"] + map(format_intention, intentions))
         ################
         
         
-        ##### giving hints, pretend and score #####
+        ##### 4) Predict the action of other players given my hint #####
         # TODO: it's nerve wrecking that it keep giving out useless hints (about discarding) when tokens are scarce
-        if hints > 1:  # ADD: just use hints > 1 as heuristics
+        if hints > 0:
             valid = []
             for c in ALL_COLORS:  # color hint
                 action = (HINT_COLOR, c)
+                # reason about expected action of my co-player
                 (isvalid,score,expl) = pretend(action, knowledge[1-nr], intentions, hands[1-nr], board)
                 self.explanation.append(["Prediction for: Hint Color " + COLORNAMES[c]] + map(format_intention, expl))
                 if isvalid:
-                    valid.append((action,score))
+                    valid.append((action,score))  # all valid (action,score) pair is saved in valid
             
-            for r in xrange(5):  # rank hint
+            for r in xrange(5):  # rank hint, analog to color hint
                 r += 1
                 action = (HINT_NUMBER, r)
                 (isvalid,score, expl) = pretend(action, knowledge[1-nr], intentions, hands[1-nr], board)
@@ -1097,11 +1138,12 @@ class SelfIntentionalPlayer(Player):
                     result = Action(HINT_NUMBER, pnr=1-nr, num=a[1])
         ###################################
 
-        ##### random discard  #####
+        ##### 5) random discard  #####
         self.explanation.append(["My Knowledge"] + map(format_knowledge, knowledge[nr]))
         diff = lambda l1, l2: [x for x in l1 if x not in l2]
-        maydiscard = diff(xrange(handsize), self.keeplist) # ADD: maydiscard only if not to be kept
+        maydiscard = diff(xrange(handsize), self.keeplist)  # ADD: maydiscard only if not to be kept
         print('may be discarded: ', maydiscard)
+        # all these stuff not needed anymore if I just discard the oldest card
         # possible = [Action(DISCARD, cnr=i) for i in maydiscard]
 
         # compute expected loss of discarding a card
@@ -1111,16 +1153,14 @@ class SelfIntentionalPlayer(Player):
             
         # self.explanation.append(["Discard Scores"] + map(lambda (a,s,t): "\n".join(map(format_term, t)) + "\n%.2f"%(s), scores))
         # scores.sort(key=lambda (a,s,t): -s)
-        if result:
+
+        if result:  # if you any other priorities, return it
             return result
 
-        for cnr in self.keeplist:  # ADD: shift the keeplist index by one if a card will be discarded
-            if cnr >= maydiscard[0]:
-                self.keeplist.remove(cnr)
-                self.keeplist.add(cnr-1)
+        shift_index(0)
         print('shift keeplist after maydiscard: ', self.keeplist)
         return Action(DISCARD, cnr=maydiscard[0])  # ADD: discard the oldest which can be discarded
-        # return scores[0][0]
+        return scores[0][0]  # for printing
         ###################################
 
 
