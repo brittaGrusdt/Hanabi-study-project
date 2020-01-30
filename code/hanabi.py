@@ -911,76 +911,87 @@ class SelfIntentionalPlayer(Player):
         self.explanation.append(["Your Hand:"] + map(f, hands[1-nr]))
 
         ##### New part: do what the other player (human) wants me to do #####
-        action = []  # list of all feasible actions
+        action = None  # ADD: just keep one possible action and not a list
+        card_index = None
         if self.gothint:  # if I am given a hint about my hands
             (act,plr) = self.gothint
             if act.type == HINT_COLOR:
                 for ci, card in enumerate(knowledge[nr]):
-                    # e.g.) given a hint about red cards, my card is possibly red
+                    # e.g.) I am given a hint about red cards, and my ci-th card is possibly red
                     pointed = sum(card[act.col]) > 0  # positively identified
-                    possible_hint = get_possible(card)  #
-
-                    play = potentially_playable(possible_hint, board)
+                    possible_hint = get_possible(card)
+                    play = playable(possible_hint, board)  # ADD: should play the surely playable card if possible
+                    mayplay = potentially_playable(possible_hint, board)
                     discard = discardable(possible_hint, board)  # ADD: mostly hint about discarding is not given
                     if play and pointed:
-                        action.append(PLAY)
-                    elif discard and pointed:
-                        action.append(DISCARD)
-                    else:
-                        action.append(None)
-
+                        action = PLAY  # the last surely playable card should be played
+                        card_index = ci
+        #             elif mayplay and pointed and action != PLAY:
+        #                 action = PLAY  # keep action if it's play for sure
+        #                 card_index = ci
+                    elif discard and pointed and action != PLAY:
+                        action = DISCARD
+                        card_index = ci
             elif act.type == HINT_NUMBER:
                 for ci, card in enumerate(knowledge[nr]):
-
                     cnt = 0
                     for c in ALL_COLORS:
                         cnt += card[c][act.num-1]
                     pointed = cnt > 0
                     possible_hint = get_possible(card)
-
-                    play = potentially_playable(possible_hint, board)
-                    discard = discardable(possible_hint, board)
+                    play = playable(possible_hint, board)  # ADD: should play the surely playable card if possible
+                    mayplay = potentially_playable(possible_hint, board)
+                    discard = discardable(possible_hint, board)  # ADD: mostly hint about discarding is not given
                     if play and pointed:
-                        action.append(PLAY)
-                    elif discard and pointed:
-                        action.append(DISCARD)
-                    else:
-                        action.append(None)
+                        action = PLAY  # the last surely playable card should be played
+                        card_index = ci
+                    # elif mayplay and pointed and action != PLAY:
+                    #     action = PLAY  # keep action if it's play for sure
+                    #     card_index = ci
+                    elif discard and pointed and action != PLAY:
+                        action = DISCARD
+                        card_index = ci
 
-
-            ## ADD: KEEP if no hints about play or discard is given
-            if (len(set(action)) == 1) and (action[0] is None):
-                print('KEEP option activated')
-                if act.type == HINT_COLOR:
-                    for ci, card in enumerate(knowledge[nr]):
-                        pointed = sum(card[act.col]) > 0
-                        if pointed:
-                            print('pointed')
-                            for col in ALL_COLORS:
-                                for rank in range(5):
-                                    if card[col][rank] == 1:  # exactly one card left of that specific sort
-                                        self.keeplist.add(ci)
-                                        print('keep {}th card given color hint, card might be col:{} rank:{}'.format(ci,col,rank),
-                                              self.keeplist)
-                            action.append(None)
-
-                elif act.type == HINT_NUMBER:
-                    for ci, card in enumerate(knowledge[nr]):
-                        cnt = 0
-                        for c in ALL_COLORS:
-                            cnt += card[c][act.num - 1]
-                        pointed = cnt > 0
-                        if pointed:
-                            print('pointed')  # TODO: pointed but somehow not keepings
-                            for col in ALL_COLORS:
-                                for rank in range(5):
-                                    if card[col][rank] == 1:
-                                        self.keeplist.add(ci)
-                                        print(
-                                        'keep {}th card given num hint, card might be col:{} rank:{}'.format(ci, COLORNAMES[col],
-                                                                                                               rank+1),
-                                        self.keeplist)
-                            action.append(None)
+        if action is None:
+            print('KEEP activated')
+            if act.type == HINT_COLOR:
+                for ci, card in enumerate(knowledge[nr]):
+                    if sum(card[act.col]) > 0:
+                        self.keeplist.add(ci)
+        #
+        #     # ADD: KEEP if no hints about play or discard is given
+        #     # if (len(set(action)) == 1) and (action[0] is None):
+        #     if action is None:
+        #         print('KEEP option activated')
+        #         if act.type == HINT_COLOR:
+        #             for ci, card in enumerate(knowledge[nr]):
+        #                 pointed = sum(card[act.col]) > 0
+        #                 if pointed:
+        #                     print('pointed')
+        #                     for col in ALL_COLORS:
+        #                         for rank in range(5):
+        #                             if card[col][rank] == 1:  # exactly one card left of that specific sort
+        #                                 self.keeplist.add(ci)
+        #                                 print('keep {}th card given color hint, card might be col:{} rank:{}'.format(
+        #                                     ci+1, COLORNAMES[col], rank+1), self.keeplist)
+        #                             else:
+        #                                 print(ci+1, COLORNAMES[col], rank+1, card[col][rank])
+        #         elif act.type == HINT_NUMBER:
+        #             for ci, card in enumerate(knowledge[nr]):
+        #                 cnt = 0
+        #                 for c in ALL_COLORS:
+        #                     cnt += card[c][act.num - 1]
+        #                 pointed = cnt > 0
+        #                 if pointed:
+        #                     print('pointed')  # TODO: pointed but somehow not keeping
+        #                     for col in ALL_COLORS:
+        #                         for rank in range(5):
+        #                             if card[col][rank] == 1:
+        #                                 self.keeplist.add(ci)
+        #                                 print('keep {}th card given num hint, card might be col:{} rank:{}'.format(
+        #                                     ci+1, COLORNAMES[col], rank+1), self.keeplist)
+        #                             else:
+        #                                 print(ci+1, COLORNAMES[col], rank+1, card[col][rank])
 
         # ADD: aux function to help with shifting if a card is played, discarded ...
         def shift_index(acted_index):
@@ -994,16 +1005,17 @@ class SelfIntentionalPlayer(Player):
 
         # if I can potentially do something with my card
         if action:
-            self.explanation.append(["What you want me to do"] + map(format_intention, action))
-            for i,a in enumerate(action):
-                if a == PLAY and (not result or result.type == DISCARD):  # playing is preferred over discarding
-                    result = Action(PLAY, cnr=i)  # TODO: the most recent card should be played if multiples are positively identified
-                    shift_index(i)
-                    print('shift keeplist after hintedplay: ', self.keeplist)
-                elif a == DISCARD and not result:  # rather discard the first card
-                    result = Action(DISCARD, cnr=i)
-                    shift_index(i)
-                    print('shift keeplist after hinteddiscard: ', self.keeplist)
+            result = Action(action, cnr=card_index)
+            # self.explanation.append(["What you want me to do"] + map(format_intention, action))
+            # for i,a in enumerate(action):
+            #     if a == PLAY and (not result or result.type == DISCARD):  # playing is preferred over discarding
+            #         result = Action(PLAY, cnr=i)  # TODO: the most recent card should be played if multiples are positively identified
+            #         shift_index(i)
+            #         print('shift keeplist after hintedplay: ', self.keeplist)
+            #     elif a == DISCARD and not result:  # rather discard the first card
+            #         result = Action(DISCARD, cnr=i)
+            #         shift_index(i)
+            #         print('shift keeplist after hinteddiscard: ', self.keeplist)
         ##################################
 
 
