@@ -41,7 +41,7 @@ var board = {blue: 1,
 // set of states (here intention for a card)
 // we represent objects as JavaScript objects to demarcate them from utterances
 // internally we treat objects as strings nonetheless
-var intentions = [
+var objects = [
   {string: "play"},
   {string: "keep"},
   {string: "discard"}
@@ -50,37 +50,28 @@ var intentions = [
 // prior over world states
 var objectPrior = function() {
   var obj = categorical({
-    vs: intentions,
-    ps: [3, 2, 1.5]
+    vs: objects,
+    ps: [3, 2, 1.5]  // arbitrary priors for intentions
   })
   return obj.string 
 }
 
-// set of utterances
+// set of possible utterances
 var utterances = ["blue", "green", "yellow", "white", "red",
                  "1", "2", "3", "4", "5"]
 
-// meaning function to interpret the utterances
-var meaning = function(utterance, obj){
-  if (obj == "play") {
-    // TODO: use functions from Eger
-    if playable(utterance) {return 1} 
-    else if potentially_playable(utterance) {return 0.7}
-    else {return 0.0001}
-  } 
-  else if (obj == "keep") {  // analog
-    
-  }
-  else {
-    
-  }
-}
 
 // literal listener, p(s|u)
 var literalListener = function(utterance){
+  // TODO: use utterance to update knowledge structure in Eger
   Infer({model: function(){
-    var obj = objectPrior();
-    condition(meaning(utterance, obj))
+    var obj = objectPrior(); // sample intentions according to the prior
+    if (obj == "play") {
+      //if (playable() {factor(1)} // TODO: interaction with Eger algorithm
+      if (utterance == '1') {factor(1)}
+    else {factor(0.1)}
+  } 
+    else  {factor(0.5)} // just arbitrary examples for now
     return obj
   }})
 }
@@ -97,7 +88,7 @@ var alpha = 1
 
 // utterance cost function
 var cost = function(utterance) {
-  return 0;
+  return 0;  // TODO: Does this makes sense?
 };
 
 // pragmatic speaker, p(u|s)
@@ -127,7 +118,7 @@ var pragmaticListener = function(utterance){
   }})
 }
 
-viz.table(pragmaticListener("blue"))
+viz.table(pragmaticListener("1"))
 
 // unfold the following lines to see complete probability tables
 ///fold: 
