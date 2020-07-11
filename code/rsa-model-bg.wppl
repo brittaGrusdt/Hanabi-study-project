@@ -14,11 +14,11 @@ const numbers = ["1", "2", "3", "4", "5"]
 const utterances = suits.concat(numbers);
 const actions = utterances.concat(["play", "discard"])
 const PLAYERS = ['player1', 'player2', 'player3']
-
+const CARDS = Object.keys(entire_context)
 
 // @arg card: color+nb, e.g. red-1, blue-3
-let LiteralMeaning = function(card, utt){
-  return card.includes(utt)
+let LiteralMeaning = function(color, nb, utt){
+  return [color, nb].join("-").includes(utt)
 }
 
 globalStore.context_game = {"discarded": [], "played": ["red-1"],
@@ -31,13 +31,13 @@ let cardsGlobal = function(){
   return cards_seen
 }
 
-// context of one or more players, players: ['player1', ...]
+// context (what is jointly visible) of one or more players,
+// players: ['player1', ...]
 let contextPlayers = function(players){
  let joint_observations = reduce(function(player_i, acc){
   let cards = players.includes(player_i) ? [] : deck[player_i]
   acc.concat(cards)
   }, [], PLAYERS);
-//  let jointly_visible = _.countBy(joint_observations);
  let global_observations = cardsGlobal();
  let context = joint_observations.concat(global_observations);
  return _.countBy(context);
@@ -67,37 +67,49 @@ let sampleIntent = function(card_known, nb_card_unseen){
    "discardable"
   //todo discardable: known that not needed anymore, atm discardable never chosen
   //todo keep: difference between keep because critical or only potentially critical because the player already sees the card in another player's hand
-//   print(card_known.color + '-' + card_known.nb + ': ' + intent)
+//   console.log(card_known.color + '-' + card_known.nb + ': ' + intent)
   return intent
 }
 
-// what player thinks about observer's cards
+// what observer thinks about player's cards
 // todo: hint must be replaced by what player knows about own cards
 var PriorCards =function(player, observer, hint){
   let context = contextPlayers([player, observer]);
-  let params = reduce(function(card_nb, acc){
-    let nb_total = card_nb[1]
-    let all_seen = Object.keys(context).includes(card_nb[0]) ?
-        context[card_nb[0]] == nb_total : false
-    all_seen ? acc.concat([[card_nb[0], 0]]) : acc.concat([[card_nb[0], 1]]);
-  }, [], Object.entries(entire_context))
-  let vs_ps = _.unzip(params)
+
+  if(player !== observer) {
+    return Infer({model:function(){
+      let pos = uniformDraw(POSITIONS)
+      let card = uniformDraw(CARDS)
+      let parts = card.split("-")
+      condition(deck[player][pos] == card);
+      let intent = sampleIntent({nb: parts[1], color: parts[0]}, context[card])
+      return {pos, color: parts[0], nb: parts[1], intent}
+  }})
+  } else {
+//   let params = reduce(function(card_nb, acc){
+//     let nb_total = card_nb[1]
+//     let all_seen = Object.keys(context).includes(card_nb[0]) ?
+//         context[card_nb[0]] == nb_total : false
+//     all_seen ? acc.concat([[card_nb[0], 0]]) : acc.concat([[card_nb[0], 1]]);
+//   }, [], Object.entries(entire_context))
 
   return Infer({model:function(){
-    let card = categorical({vs: vs_ps[0], ps: vs_ps[1]})
-    let pos = uniformDraw([0, 1, 2, 3, 4])
+   let pos = uniformDraw(POSITIONS)
+   let card = uniformDraw(CARDS)
+   let parts = card.split("-")
     // todo merge with knowedge what player_to knows about her cards indep of hint
     let card_known = (hint.pos.includes(pos) && card.includes(hint.utt)) ? hint :
      {nb: 'unknown', color: 'unknown'}
     let intent = sampleIntent(card_known, context[card])
-    return {pos, card, intent}
+    return {pos, color: parts[0], nb: parts[1], intent}
   }})
+  }
 }
 
 // hint = {utt: 'unknown', color: 'unknown', nb: 'unknown'} if no hint given
 var EgerPriorCards =function(player, observer, hint){
   let context = contextPlayers([player, observer]);
-//   print(context)
+//   console.log(context)
   let remaining_cards = reduce(function(card_nb, acc){
     let nb_total = card_nb[1]
     let nb_seen = Object.keys(context).includes(card_nb[0]) ? context[card_nb[0]] : 0
@@ -105,9 +117,9 @@ var EgerPriorCards =function(player, observer, hint){
     acc.concat(repeat(nb_missing, function(){return card_nb[0]}))
   }, [], Object.entries(entire_context))
 
-//   print('remaining')
-//   print(remaining_cards)
-//   print(remaining_cards.length)
+//   console.log('remaining')
+//   console.log(remaining_cards)
+//   console.log(remaining_cards.length)
 
   return Infer({model:function(){
     let card = uniformDraw(remaining_cards)
@@ -123,19 +135,19 @@ var EgerPriorCards =function(player, observer, hint){
 let LiteralListener = function(player_to, player_from, hint, prior_type){
   player_to === player_from ? error(player_to+' cant hint at '+player_from) : null;
   return Infer({model: function(){
-    let prior = prior_type == "eger" ? EgerPriorCards(player_to, player_from, hint) :
-     PriorCards(player_to, player_from, hint);
+    let prior = prior_type == "eger" ? EgerPriorCards(player_to, player_to, hint) :
+     PriorCards(player_to, player_to, hint);
     let state = sample(prior)
 
     if(hint.utt == "play" || hint.utt == "discard") {
     }
     else if(hint.pos.includes(state.pos)){
-      condition(LiteralMeaning(state.card, hint.utt))
+      condition(LiteralMeaning(state.color, state.nb, hint.utt))
     } else {
       // hint must not be true with respect to any not hinted at card
       // e.g. if card 3 and card 4 are yellow it cannot be the case that
       // card two is also yellow
-      condition(!LiteralMeaning(state.card, hint.utt))
+      condition(!LiteralMeaning(state.color, state.nb, hint.utt))
     }
     return state
   }})
@@ -143,16 +155,21 @@ let LiteralListener = function(player_to, player_from, hint, prior_type){
 
 let marginal = function(Distr, var_marginal, player, observer, hint){
   var pos = hint.pos.join(",");
-  var disp_hint = (hint.utt == "play" || hint.utt == "discard") ? hint.utt : hint.color;
+  var disp_hint = (hint.utt == "play" || hint.utt == "discard") ? hint.utt
+                                                                : hint.color;
   display(player+' interprets hint: '+disp_hint+'-'+hint.nb+' at pos'+pos+' from '
           +observer)
   return marginalize(Distr, function(val){
-    return var_marginal === "card" ? val.card :
-      var_marginal === "intent" ? val.intent :
-      var_marginal === "card-intent" ? {card: val.card, intent: val.intent} :
-      var_marginal === "card-pos" ? {card: val.card, pos: val.pos} :
-      var_marginal === "pos-intent" ? {pos: val.pos, intent: val.intent} : val
-  })
+    let card = [val.color, val.nb].join("-");
+    let pos = val.pos;
+    let intent = val.intent;
+    return var_marginal === "card" ? card :
+      var_marginal === "intent" ? intent :
+      var_marginal === "card-intent" ? {card, intent} :
+      var_marginal === "card-pos" ? {card, pos} :
+      var_marginal === "pos-intent" ? {pos, intent} :
+      var_marginal === "card-pos-intent" ? {card, pos, intent} : val;
+  });
 }
 
 let marginalPos = function(Distr, indices){
@@ -195,13 +212,13 @@ let speaker = function(player, addressee, states, prior_type){
   let PriorHints = actionPrior(cards, deck[player]);
   return(Infer({model:function(){
     let hint = sample(PriorHints);
-//     print('hint: ' + hint.utt + ' at ' + hint.pos)
+//     console.log('hint: ' + hint.utt + ' at ' + hint.pos)
     let ll = LiteralListener(addressee, player, hint, prior_type)
     let scores = [];
     map(function(s){
       let sc = ll.score(s)
       sc !== -Infinity ? scores.push(sc) : null;
-//       sc !== -Infinity ? print('pos: ' + s.pos + ' card: ' + s.card +
+//       sc !== -Infinity ? console.log('pos: ' + s.pos + ' card: ' + s.card +
 //                                ' intent: ' + s.intent +
 //                                ' score: ' + sc) : null;
     }, states)
@@ -215,9 +232,9 @@ let speaker = function(player, addressee, states, prior_type){
 let receiver = 'player1'
 let giver = 'player2'
 
-let actions = actionPrior(deck[giver], deck[receiver])
-console.log(sample(actions))
-
+// action prior
+// let actions = actionPrior(deck[giver], deck[receiver])
+// console.log(sample(actions))
 
 // let hint = {utt: '2', color: 'unknown', nb: "2", pos: [1]}
 let hint = {utt: 'red', color: 'red', nb: "unknown", pos: [0, 1]}
@@ -228,10 +245,37 @@ let no_hint = {utt: 'unknown', color: 'unknown', nb: 'unknown', pos:[]}
 
 // -------- PRIOR --------- //
 
-// let prior = prior_type === "eger" ? EgerPriorCards(receiver, receiver, no_hint) :
-//  PriorCards(receiver, receiver, no_hint);
+let prior = prior_type === "eger" ? EgerPriorCards(receiver, receiver, no_hint) :
+ PriorCards(giver, receiver, no_hint);
+// console.log(receiver + ' reasons about cards of ' + giver)
+
+let cardPrior = marginalize(prior, function(x){
+  return {card: [x.color, x.nb].join("-"), pos: x.pos}
+});
+// viz(cardPrior)
+
+let DistrGivenPos = function(Distr, pos){
+  return Infer({model:function(){
+    let x = sample(Distr)
+    condition(x.pos == pos)
+    return x
+  }});
+}
+// viz(DistrGivenPos(1))
+
+// -------- LITERAL LISTENER --------- //
+
+let LL = LiteralListener(receiver, giver, hint, prior_type);
+let LL_marg = marginal(LL, "card-pos", receiver, giver, hint);
+viz(LL_marg);
+viz(DistrGivenPos(LL_marg, 1))
+// viz(marginal(LL, "card-intent", receiver, giver, hint))
+
+
+
 // viz(marginal(prior, "card-pos", receiver, receiver, no_hint))
 // viz(marginal(prior, "card-intent", receiver, receiver, no_hint))
+
 // viz(marginal(prior, "", receiver, receiver, no_hint))
 
 // let prior_pos = marginalPos(prior, [0])
@@ -240,33 +284,25 @@ let no_hint = {utt: 'unknown', color: 'unknown', nb: 'unknown', pos:[]}
 // --- Example intents depending on what player knows about particular card --- //
 // let context = contextPlayers(['player1'])
 // display('player doesnt know anything about her red-2')
-// print(sampleIntent({color: 'unknown', nb: 'unknown'}, context['red-2']))
+// console.log(sampleIntent({color: 'unknown', nb: 'unknown'}, context['red-2']))
 
 // display('player knows her red-2 is red')
-// print(sampleIntent({color: 'red', nb: 'unknown'}, context['red-2']))
+// console.log(sampleIntent({color: 'red', nb: 'unknown'}, context['red-2']))
 
 // display('player knows her red-2 is a 2')
-// print(sampleIntent({color: 'unknown', nb: 2}, context['red-2']))
+// console.log(sampleIntent({color: 'unknown', nb: 2}, context['red-2']))
 
 // display('player knows her red-2 is a red-2 (red-1 is on table)')
-// print(sampleIntent({color: 'red', nb: 2}, context['red-2']))
-
-// -------- LITERAL LISTENER --------- //
-
-let LL = LiteralListener(receiver, giver, hint, prior_type)
-// // map(print, LL.support())
-// viz(marginal(LL, "card-pos", receiver, giver, hint))
-// viz(marginal(LL, "card-intent", receiver, giver, hint))
-viz(marginal(LL, "pos-intent", receiver, giver, hint))
+// console.log(sampleIntent({color: 'red', nb: 2}, context['red-2']))
 
 // ---- SPEAKER --- //
 // 1. actionPrior
 // let cards = deck[receiver]
-// print('cards of ' + receiver)
-// print(cards)
-// print('hint (utterance) Prior')
+// console.log('cards of ' + receiver)
+// console.log(cards)
+// console.log('hint (utterance) Prior')
 // let Prior = actionPrior(cards)
-// var _  = map(print, Prior.support())
+// var _  = map(console.log, Prior.support())
 // viz(marginalize(Prior, function(msg){
 //   return {utt: msg.utt, pos: msg.pos}
 // }));
@@ -281,18 +317,18 @@ viz(marginal(LL, "pos-intent", receiver, giver, hint))
 
 
 // --- Pragmatic Listener --- //
-var pragmatic_listener = function(addressee, player_speaker, hint){
-  return Infer({model:function(){
-    var state = sample(PriorCards(addressee, player_speaker, hint))
-    condition(state.intention !== "irrelevant");
-//     print(state)
-    observe(speaker(player_speaker, addressee, [state], prior_type),
-            {utt: hint.utt, pos: hint.pos})
-    return state
-  }})
-}
+// var pragmatic_listener = function(addressee, player_speaker, hint){
+//   return Infer({model:function(){
+//     var state = sample(PriorCards(addressee, player_speaker, hint))
+//     condition(state.intention !== "irrelevant");
+// //     console.log(state)
+//     observe(speaker(player_speaker, addressee, [state], prior_type),
+//             {utt: hint.utt, pos: hint.pos})
+//     return state
+//   }})
+// }
 
-let PL = pragmatic_listener(receiver, giver, hint)
-// viz(marginal(PL, "card-pos", receiver, giver, hint))
-// viz(marginal(PL, "card-intent", receiver, giver, hint))
-viz(marginal(PL, "pos-intent", receiver, giver, hint))
+// let PL = pragmatic_listener(receiver, giver, hint)
+// // viz(marginal(PL, "card-pos", receiver, giver, hint))
+// // viz(marginal(PL, "card-intent", receiver, giver, hint))
+// viz(marginal(PL, "pos-intent", receiver, giver, hint))
