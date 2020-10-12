@@ -66,7 +66,13 @@ def utility(intention, card, state, knowledge):
         # [B, only added comment]: case 1: card is playable
         # if intention is play and card is playable, this results in one more card on the fireworks. Reward this.
         if state.card_playable_on_fireworks(card["color"], card["rank"]):
-            score += 10
+            # [B]: check if the same card is already cued as 'playable'
+            # on some other player's hand first
+            if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
+                score -= 1
+            else:
+                score += 10
+
         # [B, only added comment]: case 2: card is not playable right now
         else:
             # punish loosing a card from stack
@@ -114,7 +120,9 @@ def utility(intention, card, state, knowledge):
             # hand, otherwise punish that -0.5
             # (TODO: estimated_hands in deepmind framework?)
             for card_on_hands in state.estimated_hands[:]:
-                if not ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
+                if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
+                    score += 1
+                else:
                     score -= 0.5
 
             # [B, only added comment]: How much does discarding the
