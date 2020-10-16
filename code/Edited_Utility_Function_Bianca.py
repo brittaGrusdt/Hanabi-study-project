@@ -61,55 +61,57 @@ def utility(intention, card, state, knowledge):
         # information token available anymore (which might result in criticial
         # cards being discarded)
         elif: state.information_tokens() == 0:
-                score -= 3
+                score += -3
 
         # [B, only added comment]: case 1: card is playable
         # if intention is play and card is playable, this results in one more card on the fireworks. Reward this.
-        if state.card_playable_on_fireworks(card["color"], card["rank"]):
+        card_color = card["color"]
+        card_rank = card["rank"]
+        if state.card_playable_on_fireworks(card_color, card_rank):
             # [B]: check if the same card is already cued as 'playable'
             # on some other player's hand first
             if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
-                score -= 1
+                score += -1
             else:
                 score += 10
 
         # [B, only added comment]: case 2: card is not playable right now
         else:
             # punish loosing a card from stack
-            score -= 1
+            score += -1
             # and punish loosing a life token
             if state.life_tokens() == 3:
-                score -= 1
+                score += -1
             elif state.life_tokens() == 2:
-                score -= 3
+                score += -3
             elif state.life_tokens() == 1:  # game would end directly
-                score -= 25
+                score += -25
 
         # if card would still have been relevant in the future,
         # punish loosing it depending on the remaining copies of this card in the deck
         if not CardUseless(card, state.fireworks()):
             if remaining_copies(card, state.discard_pile()) == 2:
-                score -= 1
+                score += -1
             elif remaining_copies(card, state.discard_pile()) == 1:
-                score -= 2
+                score += -5 # [B]: upped value from 2 to 5
             elif remaining_copies(card, state.discard_pile()) == 0:
-                score -= 10 # [B]: upped value from -5 to -10
+                score += -10 # [B]: upped value from -5 to -10
 
     elif intention == DISCARD:
         # punish loosing a card from stack
         # [B]: changed value from -1 to -0.5
-        score -= 0.5
+        score += -0.5
         # reward gaining a hint token:
-        # [B]: changed value from -0.5 to -1
+        # [B]: changed value from +0.5 to +1
         score += 1
 
         # punish discarding a playable card
         if state.card_playable_on_fireworks(card["color"], card["rank"]):
-            score -= 2
-            # [B]: playable 1,2,3 advance the game more than 4,5
-            # punish losing a playable 1,2,3 more (we start indexing at 0)
-            if card["rank"] < 3:
-                score -= 3
+            score += -2
+            # [B]: playable 2,3 advance the game more than 4,5
+            # punish losing a playable 2,3 more (we start indexing at 0)
+            if card["rank"] == 2 or card["rank"] == 3:
+                score += -3
 
         # if card is not playable right now but would have been relevant in the future, punish
         # discarding it depending on the number of remaining copies in the game
@@ -123,16 +125,16 @@ def utility(intention, card, state, knowledge):
                 if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
                     score += 1
                 else:
-                    score -= 0.5
+                    score += -0.5
 
             # [B, only added comment]: How much does discarding the
             # particular card hurt the game?
             if remaining_copies(card, state.discard_pile()) == 2:
-                score -= 1
+                score += -1
             elif remaining_copies(card, state.discard_pile()) == 1:
-                score -= 5 # [B]: upped value from 2 to 5
+                score += -5 # [B]: upped value from 2 to 5
             elif remaining_copies(card, state.discard_pile()) == 0:
-                score -= 10 # [B]: upped value from 5 to 10
+                score += -10 # [B]: upped value from 5 to 10
 
         # do we want to reward discarding useless card additionally?
         # I think rewarding gaining a hint token should be enough, so nothing happens here
@@ -144,10 +146,10 @@ def utility(intention, card, state, knowledge):
         # keeping a playable card is punished, because it does not help the game
         # [B]: I'm unsure about this part
         if CardPlayable(card, state.fireworks()):
-            score -= 2
+            score += -2
 
         # [B]: Case 2: card will be playable soon (with one additional card needed on the stack)
-        elif state.card_playable_on_fireworks(card["color"] + 1, card["rank"]):
+        elif state.card_playable_on_fireworks(card["color"], card["rank"] + 1):
             score += 3
             # [B]: on top of that, check if this additional card is already on
             # someone's hand with the intention of PLAY (by acessing the public
@@ -172,7 +174,7 @@ def utility(intention, card, state, knowledge):
         # [B, only added comment]: Case 4: card is useless
         elif CardUseless(card, state.fireworks()):
             #[B, only added comment]: punishment for saving an irrelevant card
-            score -= 2 # [B]: upped value from 1 to 2
+            score += -2 # [B]: upped value from 1 to 2
 
         # [B]: to convey the intention of KEEP, there have most probably
         # been given a hint, which means losing an information token.
@@ -185,7 +187,7 @@ def utility(intention, card, state, knowledge):
         # information token available anymore (which might result in criticial
         # cards being discarded)
         elif: state.information_tokens() == 0:
-                score -= 3
+                score += -3
 
         ######################################
         #TODO:
