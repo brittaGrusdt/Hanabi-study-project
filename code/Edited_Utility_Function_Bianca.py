@@ -64,7 +64,8 @@ def utility(intention, card, state, knowledge):
                 score += -3
 
         # [B, only added comment]: case 1: card is playable
-        # if intention is play and card is playable, this results in one more card on the fireworks. Reward this.
+        # if intention is play and card is playable, this results in one more card on
+        # the fireworks. Reward this.
         card_color = card["color"]
         card_rank = card["rank"]
         if state.card_playable_on_fireworks(card_color, card_rank):
