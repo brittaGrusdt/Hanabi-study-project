@@ -134,7 +134,9 @@ def utility(intention, card, state, knowledge):
             # (TODO: estimated_hands in deepmind framework?)
             for card_on_hands in state.estimated_hands[:]:
                 if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
-                    score += 1
+                    # [B]: #TODO: check if other card instance is already hinted as "PLAY"
+                    # if YES:
+                    #   score += 1
                 else:
                     score += -0.5
 
