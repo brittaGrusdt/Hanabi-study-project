@@ -71,7 +71,9 @@ def utility(intention, card, state, knowledge):
             # [B]: check if the same card is already cued as 'playable'
             # on some other player's hand first
             if ((card_on_hands['color'] is card_color) and (card_on_hands['rank'] is rank_color)):
-                score += -1
+                # [B]: #TODO: check if other card instance is already hinted as "PLAY"
+                # if YES:
+                #   score += -1
             else:
                 score += 10
 
