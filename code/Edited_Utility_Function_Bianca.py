@@ -94,9 +94,17 @@ def utility(intention, card, state, knowledge):
                 score += -1
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += -5 # [B]: upped value from 2 to 5
+            # [B, only added comment]: Case 3: card is critical
             elif remaining_copies(card, state.discard_pile()) == 0:
-
-                score += -10 # [B]: upped value from -5 to -10
+                # [B]: case differentiation:
+                if card["rank"] == 5:
+                    score += -8
+                elif card["rank"] == 4:
+                    score += -10
+                # [B]: losing a critical 1,2,3 would reduce the total
+                # game score the most, punish it accordingly.
+                else:
+                    score += -15
 
     elif intention == DISCARD:
         # punish loosing a card from stack
@@ -128,14 +136,15 @@ def utility(intention, card, state, knowledge):
                 else:
                     score += -0.5
 
-            # [B, only added comment]: How much does discarding the
-            # particular card hurt the game?
+            # [B, only added comment]: How bad is discarding the
+            # particular card for the game /end score?
             if remaining_copies(card, state.discard_pile()) == 2:
                 score += -1
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += -5 # [B]: upped value from 2 to 5
+            # [B, only added comment]: Case 3: card is critical
             elif remaining_copies(card, state.discard_pile()) == 0:
-                # [B]: case differentiation: critical 5
+                # [B]: case differentiation:
                 if card["rank"] == 5:
                     score += -8
                 elif card["rank"] == 4:
@@ -171,17 +180,17 @@ def utility(intention, card, state, knowledge):
                 score += 1
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += 4 # [B]: upped value from 2 to 4
+            # [B, only added comment]: Case 3: card is critical
             elif remaining_copies(card, state.discard_pile()) == 0:
-                # [B]: Card is Critical
-                # [B]: Case differentiation:
+                # [B]: Case Differentiation:
                 if card["rank"] == 5:
-                    score += -8
+                    score += 5
                 elif card["rank"] == 4:
-                    score += -10
-                # [B]: Losing a critical 1,2,3 would reduce the total
-                # game score the most. Punish it accordingly.
+                    score += 8
+                # [B]: saving a critical 1,2,3 will be most beneficial
+                # to the end score.
                 else:
-                    score += -15
+                    score += 15
 
                 # [B]: Test if card is oldest / in the oldest slot on hand
                 # Bonus for avoiding a critical card being the oldest and most
