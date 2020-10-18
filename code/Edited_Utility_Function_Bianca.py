@@ -95,6 +95,7 @@ def utility(intention, card, state, knowledge):
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += -5 # [B]: upped value from 2 to 5
             elif remaining_copies(card, state.discard_pile()) == 0:
+
                 score += -10 # [B]: upped value from -5 to -10
 
     elif intention == DISCARD:
@@ -134,7 +135,15 @@ def utility(intention, card, state, knowledge):
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += -5 # [B]: upped value from 2 to 5
             elif remaining_copies(card, state.discard_pile()) == 0:
-                score += -10 # [B]: upped value from 5 to 10
+                # [B]: case differentiation: critical 5
+                if card["rank"] == 5:
+                    score += -8
+                elif card["rank"] == 4:
+                    score += -10
+                # [B]: losing a critical 1,2,3 would reduce the total
+                # game score the most, punish it accordingly.
+                else:
+                    score += -15
 
         # do we want to reward discarding useless card additionally?
         # I think rewarding gaining a hint token should be enough, so nothing happens here
@@ -163,8 +172,16 @@ def utility(intention, card, state, knowledge):
             elif remaining_copies(card, state.discard_pile()) == 1:
                 score += 4 # [B]: upped value from 2 to 4
             elif remaining_copies(card, state.discard_pile()) == 0:
-                # [B, only added comment]: Case 3: card is critical
-                score += 10 # [B]: upped value from 5 to 10
+                # [B]: Card is Critical
+                # [B]: Case differentiation:
+                if card["rank"] == 5:
+                    score += -8
+                elif card["rank"] == 4:
+                    score += -10
+                # [B]: Losing a critical 1,2,3 would reduce the total
+                # game score the most. Punish it accordingly.
+                else:
+                    score += -15
 
                 # [B]: Test if card is oldest / in the oldest slot on hand
                 # Bonus for avoiding a critical card being the oldest and most
